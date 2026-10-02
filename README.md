@@ -1,4 +1,4 @@
-# instagram_autoupload
+# insta_tools
 
 Posts one photo per week from a Google Drive queue to an Instagram professional
 account, running on a GitHub Actions schedule.
