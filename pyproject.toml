@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "instagram-autoupload"
+version = "0.1.0"
+description = "Weekly automated Instagram photo posting from a Google Drive queue"
+requires-python = ">=3.10"
+dependencies = [
+    "google-api-python-client",
+    "google-auth",
+    "google-auth-oauthlib",
+    "requests",
+    "PyNaCl",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
