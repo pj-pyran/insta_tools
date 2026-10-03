@@ -1,5 +1,11 @@
 local LrTasks = import 'LrTasks'
 local LrDialogs = import 'LrDialogs'
+local LrLogger = import 'LrLogger'
+
+local logger = LrLogger('AutoInstaExport')
+logger:enable('logfile')
+datetimeNow = os.date('%Y-%m-%d %H:%M:%S')
+logger:info('ManualTrigger.lua loaded at ' .. datetimeNow)
 
 local ExportTask = require 'ExportTask'
 

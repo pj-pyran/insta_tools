@@ -4,13 +4,14 @@ local LrFileUtils = import 'LrFileUtils'
 local LrPathUtils = import 'LrPathUtils'
 local LrExportSession = import 'LrExportSession'
 local LrLogger = import 'LrLogger'
+local LrProgressScope = import 'LrProgressScope'
+local LrFunctionContext = import 'LrFunctionContext'
 
 local Config = require 'Config'
 
 local logger = LrLogger('AutoInstaExport')
 logger:enable('logfile')
 datetimeNow = os.date('%Y-%m-%d %H:%M:%S')
-logger:info('ExportTask.lua loaded at ' .. datetimeNow)
 local ExportTask = {}
 
 -- Guards against the background poll loop and a manual trigger running
@@ -69,7 +70,15 @@ local function getImageDimensions(path)
     return width, height
 end
 
--- Crops to Instagram's supported aspect ratio range, then resizes to final dims.
+-- formatOptions takes a 0-100 integer; Config.jpegQuality is a 0-1 fraction
+-- (matching Lightroom's LR_jpeg_quality convention), so it's scaled here.
+local sipsQuality = math.floor(Config.jpegQuality * 100 + 0.5)
+
+-- Only crops when outside Instagram's supported range, and only by the
+-- minimum amount needed to reach the nearest valid ratio (preserves the
+-- original artistic crop otherwise). Only resizes when actually oversized.
+-- Every sips re-encode step is given an explicit quality so Config.jpegQuality
+-- isn't silently overridden by sips's own default.
 local function cropAndResizeForInstagram(path)
     local width, height = getImageDimensions(path)
     if not width or not height then
@@ -88,7 +97,8 @@ local function cropAndResizeForInstagram(path)
 
     if cropWidth ~= width or cropHeight ~= height then
         LrTasks.execute(
-            string.format('sips -c %d %d %s', cropHeight, cropWidth, shellQuote(path))
+            string.format('sips -c %d %d -s formatOptions %d %s',
+                cropHeight, cropWidth, sipsQuality, shellQuote(path))
         )
     end
 
@@ -100,16 +110,20 @@ local function cropAndResizeForInstagram(path)
         finalWidth = math.floor(finalHeight * finalRatio)
     end
 
-    LrTasks.execute(
-        string.format('sips -z %d %d %s', finalHeight, finalWidth, shellQuote(path))
-    )
+    if finalWidth < cropWidth or finalHeight < cropHeight then
+        LrTasks.execute(
+            string.format('sips -z %d %d -s formatOptions %d %s',
+                finalHeight, finalWidth, sipsQuality, shellQuote(path))
+        )
+    end
+
     return true
 end
 
 local function writeCaptionFile(path, photo)
     local f = io.open(path, 'w')
     if f then
-        f:write(Config.captionText)
+        f:write('\n\nthe key to actually posting your work to IG? write some scripts to do it for you!')
         f:close()
     end
 end
@@ -181,28 +195,47 @@ function ExportTask.runExportPassInner()
         photosToExport = candidates,
         exportSettings = exportSettings,
     }
-    
+
     -- Tagging is batched into one write-access call after the render loop
     -- finishes; calling withWriteAccessDo per-photo mid-loop (while renditions
     -- are still yielding via waitForRender) triggers an internal SDK assert.
     local exportedPhotos = {}
-    for _, rendition in exportSession:renditions() do
-        local success, pathOrMessage = rendition:waitForRender()
-        if success then
-            local ok = cropAndResizeForInstagram(pathOrMessage)
-            if ok then
-                local captionPath = LrPathUtils.replaceExtension(pathOrMessage, 'txt')
-                writeCaptionFile(captionPath, rendition.photo)
-                table.insert(exportedPhotos, rendition.photo)
-                logger:info('Exported ' .. pathOrMessage)
-            else
-                logger:error('Post-processing failed for ' .. pathOrMessage)
+
+    LrFunctionContext.callWithContext('AutoInstaExport_progress', function(context)
+        local progressScope = LrProgressScope {
+            title = 'Auto Insta Export',
+            functionContext = context,
+        }
+
+        local completed = 0
+        for _, rendition in exportSession:renditions() do
+            if progressScope:isCanceled() then
+                break
             end
-        else
-            logger:error('Export failed: ' .. tostring(pathOrMessage))
+            progressScope:setCaption(LrPathUtils.leafName(rendition.photo:getRawMetadata('path')))
+
+            local success, pathOrMessage = rendition:waitForRender()
+            if success then
+                local ok = cropAndResizeForInstagram(pathOrMessage)
+                if ok then
+                    local captionPath = LrPathUtils.replaceExtension(pathOrMessage, 'txt')
+                    writeCaptionFile(captionPath, rendition.photo)
+                    table.insert(exportedPhotos, rendition.photo)
+                    logger:info('Exported ' .. pathOrMessage)
+                else
+                    logger:error('Post-processing failed for ' .. pathOrMessage)
+                end
+            else
+                logger:error('Export failed: ' .. tostring(pathOrMessage))
+            end
+
+            completed = completed + 1
+            progressScope:setPortionComplete(completed, #candidates)
         end
-    end
-    
+
+        progressScope:done()
+    end)
+
     if #exportedPhotos > 0 then
         catalog:withWriteAccessDo('AutoInstaExport: tag photos', function()
             for _, photo in ipairs(exportedPhotos) do

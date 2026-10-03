@@ -2,12 +2,17 @@ local LrTasks = import 'LrTasks'
 local LrLogger = import 'LrLogger'
 local LrDialogs = import 'LrDialogs'
 
+local logger = LrLogger('AutoInstaExport')
+logger:enable('logfile')
+datetimeNow = os.date('%Y-%m-%d %H:%M:%S')
+logger:info('Init.lua loaded at ' .. datetimeNow)
+
 local ok, loadErr = pcall(function()
     local Config = require 'Config'
     local ExportTask = require 'ExportTask'
 
-    local logger = LrLogger('AutoInstaExport')
-    logger:enable('logfile')
+    -- local logger = LrLogger('AutoInstaExport')
+    -- logger:enable('logfile')
 
     LrTasks.startAsyncTask(function()
         logger:info('AutoInstaExport background polling started')
