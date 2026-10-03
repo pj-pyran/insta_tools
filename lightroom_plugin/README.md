@@ -1,19 +1,19 @@
 # Auto Insta Export — Lightroom Classic plugin
 
-Watches your catalog for photos tagged `for_export`, exports them as
+Watches your catalog for photos tagged `for_insta`, exports them as
 Instagram-ready JPEGs straight into the Google Drive sync folder used by
 `instagram_autoupload`, writes a caption `.txt` per photo, and tags exported
-photos `auto-exported` so they're never exported twice.
+photos `auto_exported` so they're never exported twice.
 
 ## How it works
 
 - Runs a background task inside Lightroom (started automatically whenever
   Lightroom is open) that checks every 2 minutes (configurable) for photos
-  with the `for_export` keyword that don't already have `auto-exported`.
+  with the `for_insta` keyword that don't already have `auto_exported`.
 - For each match: exports a full-quality JPEG, crops/resizes it to fit
   Instagram's supported aspect ratio range (4:5 to 1.91:1) at up to
   1080×1350px, writes a same-named caption `.txt`, and tags the photo
-  `auto-exported` in the catalog (both keywords are kept permanently).
+  `auto_exported` in the catalog (both keywords are kept permanently).
 - You can also trigger a pass manually any time via
   **Library → Plug-in Extras → Auto Insta Export: Run Now**.
 - There's no "drive connected" trigger — you open Lightroom to tag photos
@@ -47,8 +47,8 @@ Edit `AutoInstaExport.lrplugin/Config.lua` if any of these differ for you:
 | Setting | Default |
 | --- | --- |
 | `exportFolder` | Your Google Drive sync path for `_insta_auto` |
-| `forExportKeywordName` | `for_export` |
-| `autoExportedKeywordName` | `auto-exported` |
+| `forExportKeywordName` | `for_insta` |
+| `autoExportedKeywordName` | `auto_exported` |
 | `captionText` | Default caption appended to every export |
 | `pollIntervalSeconds` | `120` |
 
@@ -57,7 +57,7 @@ editing `Config.lua`.
 
 ### 4. Tag and export photos
 
-1. In Lightroom, select photos and add the `for_export` keyword (create it
+1. In Lightroom, select photos and add the `for_insta` keyword (create it
    once via the Keywording panel if it doesn't exist yet).
 2. Wait up to `pollIntervalSeconds`, or trigger immediately via
    **Library → Plug-in Extras → Auto Insta Export: Run Now**.
@@ -76,8 +76,8 @@ editing `Config.lua`.
   ```
   tail -f ~/Library/Logs/Adobe/Lightroom/LrClassicLogs/AutoInstaExport.log
   ```
-- If no photos export, confirm the `for_export` keyword name matches exactly
-  (case-sensitive) and that the photos don't already have `auto-exported`.
+- If no photos export, confirm the `for_insta` keyword name matches exactly
+  (case-sensitive) and that the photos don't already have `auto_exported`.
 - If cropping/resizing looks wrong, the plugin shells out to macOS's built-in
   `sips` tool — confirm `sips -g pixelWidth <file>` works from a terminal.
 - Aspect-ratio handling: photos are **cropped** (not padded) to fit between

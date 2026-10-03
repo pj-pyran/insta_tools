@@ -1,19 +1,27 @@
 local LrTasks = import 'LrTasks'
 local LrLogger = import 'LrLogger'
+local LrDialogs = import 'LrDialogs'
 
-local Config = require 'Config'
-local ExportTask = require 'ExportTask'
+local ok, loadErr = pcall(function()
+    local Config = require 'Config'
+    local ExportTask = require 'ExportTask'
 
-local logger = LrLogger('AutoInstaExport')
-logger:enable('logfile')
+    local logger = LrLogger('AutoInstaExport')
+    logger:enable('logfile')
 
-LrTasks.startAsyncTask(function()
-    logger:info('AutoInstaExport background polling started')
-    while true do
-        local ok, err = LrTasks.pcall(ExportTask.runExportPass)
-        if not ok then
-            logger:error('Export pass failed: ' .. tostring(err))
+    LrTasks.startAsyncTask(function()
+        logger:info('AutoInstaExport background polling started')
+        LrTasks.sleep(10) -- let catalog finish opening before the first pass
+        while true do
+            local passOk, err = LrTasks.pcall(ExportTask.runExportPass)
+            if not passOk then
+                logger:error('Export pass failed: ' .. tostring(err))
+            end
+            LrTasks.sleep(Config.pollIntervalSeconds)
         end
-        LrTasks.sleep(Config.pollIntervalSeconds)
-    end
+    end)
 end)
+
+if not ok then
+    LrDialogs.message('AutoInstaExport failed to initialize', tostring(loadErr), 'critical')
+end

@@ -9,8 +9,13 @@ local Config = require 'Config'
 
 local logger = LrLogger('AutoInstaExport')
 logger:enable('logfile')
-
+datetimeNow = os.date('%Y-%m-%d %H:%M:%S')
+logger:info('ExportTask.lua loaded at ' .. datetimeNow)
 local ExportTask = {}
+
+-- Guards against the background poll loop and a manual trigger running
+-- concurrently, which causes catalog write-access conflicts.
+local isRunning = false
 
 local function shellQuote(value)
     return "'" .. tostring(value):gsub("'", "'\\''") .. "'"
@@ -31,8 +36,12 @@ local function findKeywordByName(keywords, name)
 end
 
 local function photoHasKeyword(photo, keyword)
+    -- Compare by name, not object identity: getRawMetadata('keywords') can
+    -- return freshly-wrapped keyword objects that fail reference equality
+    -- even when they represent the same catalog keyword.
+    local targetName = keyword:getName()
     for _, kw in ipairs(photo:getRawMetadata('keywords')) do
-        if kw == keyword then
+        if kw:getName() == targetName then
             return true
         end
     end
@@ -106,12 +115,34 @@ local function writeCaptionFile(path, photo)
 end
 
 function ExportTask.runExportPass()
+    if isRunning then
+        logger:info('Skipping pass: another export pass is already running')
+        return
+    end
+    isRunning = true
+    local ok, err = LrTasks.pcall(ExportTask.runExportPassInner)
+    isRunning = false
+    if not ok then
+        error(err, 0)
+    end
+end
+
+function ExportTask.runExportPassInner()
     local catalog = LrApplication.activeCatalog()
 
     local forExportKeyword = findKeywordByName(catalog:getKeywords(), Config.forExportKeywordName)
-    local autoExportedKeyword = catalog:withWriteAccessDo('AutoInstaExport: ensure keyword', function()
-        return catalog:createKeyword(Config.autoExportedKeywordName, {}, false, nil, true)
+
+    -- withWriteAccessDo doesn't return the inner function's result, so the
+    -- created/existing keyword must be captured via an upvalue instead.
+    -- createKeyword(name, synonyms, includeOnExport, parent, returnExisting)
+    local autoExportedKeyword
+    catalog:withWriteAccessDo('AutoInstaExport: ensure keyword', function()
+        autoExportedKeyword = catalog:createKeyword(Config.autoExportedKeywordName, {}, false, nil, true)
     end)
+
+    if not autoExportedKeyword then
+        error('Failed to create or find keyword "' .. Config.autoExportedKeywordName .. '"')
+    end
 
     if not forExportKeyword then
         logger:info('No "' .. Config.forExportKeywordName .. '" keyword found in catalog; nothing to do')
@@ -131,9 +162,8 @@ function ExportTask.runExportPass()
     end
 
     logger:info(string.format('Exporting %d photo(s) tagged "%s"', #candidates, Config.forExportKeywordName))
-
     LrFileUtils.createAllDirectories(Config.exportFolder)
-
+    
     local exportSettings = {
         LR_export_destinationType = 'specificFolder',
         LR_export_destinationPathPrefix = Config.exportFolder,
@@ -146,12 +176,16 @@ function ExportTask.runExportPass()
         LR_outputSharpeningOn = true,
         LR_outputSharpeningMedia = 'screen',
     }
-
+    
     local exportSession = LrExportSession {
         photosToExport = candidates,
         exportSettings = exportSettings,
     }
-
+    
+    -- Tagging is batched into one write-access call after the render loop
+    -- finishes; calling withWriteAccessDo per-photo mid-loop (while renditions
+    -- are still yielding via waitForRender) triggers an internal SDK assert.
+    local exportedPhotos = {}
     for _, rendition in exportSession:renditions() do
         local success, pathOrMessage = rendition:waitForRender()
         if success then
@@ -159,11 +193,7 @@ function ExportTask.runExportPass()
             if ok then
                 local captionPath = LrPathUtils.replaceExtension(pathOrMessage, 'txt')
                 writeCaptionFile(captionPath, rendition.photo)
-
-                catalog:withWriteAccessDo('AutoInstaExport: tag photo', function()
-                    rendition.photo:addKeyword(autoExportedKeyword)
-                end)
-
+                table.insert(exportedPhotos, rendition.photo)
                 logger:info('Exported ' .. pathOrMessage)
             else
                 logger:error('Post-processing failed for ' .. pathOrMessage)
@@ -171,6 +201,14 @@ function ExportTask.runExportPass()
         else
             logger:error('Export failed: ' .. tostring(pathOrMessage))
         end
+    end
+    
+    if #exportedPhotos > 0 then
+        catalog:withWriteAccessDo('AutoInstaExport: tag photos', function()
+            for _, photo in ipairs(exportedPhotos) do
+                photo:addKeyword(autoExportedKeyword)
+            end
+        end)
     end
 end
 

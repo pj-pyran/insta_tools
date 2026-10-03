@@ -1,8 +1,8 @@
 -- Edit exportFolder if your Google Drive sync path differs.
 return {
     exportFolder = '/Users/peter/Library/CloudStorage/GoogleDrive-petersargentgcse@gmail.com/My Drive/sync_folder/pictures/_photo/_insta_auto',
-    forExportKeywordName = 'for_export',
-    autoExportedKeywordName = 'auto-exported',
+    forExportKeywordName = 'for_insta',
+    autoExportedKeywordName = 'auto_exported',
     captionText = '\n\nthis was auto-uploaded by a script!',
     pollIntervalSeconds = 120,
     jpegQuality = 0.9,
