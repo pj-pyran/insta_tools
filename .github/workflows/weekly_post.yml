@@ -3,9 +3,9 @@ name: Weekly Instagram Post
 on:
   schedule:
     # 05:00 UTC every Monday - see README for rationale
-    # - cron: '0 5 * * 1'
-    # testing schedule - every 5 minutes
-    - cron: '*/5 * * * *'
+    - cron: '0 5 * * 1'
+    # # testing schedule - every 5 minutes
+    # - cron: '*/5 * * * *'
   workflow_dispatch: {}
 
 permissions:
