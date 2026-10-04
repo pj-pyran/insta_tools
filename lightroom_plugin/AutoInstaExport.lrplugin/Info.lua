@@ -10,7 +10,11 @@ return {
             title = 'Auto Insta Export: Run Now',
             file = 'ManualTrigger.lua',
         },
+        {
+            title = 'Auto Insta Export: Toggle Auto-Export On/Off',
+            file = 'ToggleEnabled.lua',
+        },
     },
 
-    VERSION = { major = 1, minor = 0, revision = 1, build = 5 },
+    VERSION = { major = 1, minor = 1, revision = 1, build = 7 },
 }
