@@ -12,6 +12,7 @@ import logging
 import mimetypes
 import os
 import time
+import uuid
 
 import requests
 
@@ -41,7 +42,7 @@ class ReleaseAsset:
 
 
 def upload_photo(local_path: str) -> ReleaseAsset:
-    tag = f"post-{int(time.time())}"
+    tag = f"post-{int(time.time())}-{uuid.uuid4().hex[:8]}"
     filename = os.path.basename(local_path)
 
     create_resp = requests.post(

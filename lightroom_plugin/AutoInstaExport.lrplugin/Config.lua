@@ -1,6 +1,6 @@
--- Edit exportFolder if your Google Drive sync path differs.
-return {
-    exportFolder = '/Users/peter/Library/CloudStorage/GoogleDrive-petersargentgcse@gmail.com/My Drive/sync_folder/pictures/_photo/_insta_auto',
+-- Defaults. Put personal overrides (e.g. exportFolder) in ConfigLocal.lua, which is gitignored.
+local Config = {
+    exportFolder = '/path/to/GoogleDrive/My Drive/_insta_auto',
     forExportKeywordName = 'for_insta',
     autoExportedKeywordName = 'auto_exported',
     captionText = '\n\nthe key to actually posting your work to IG? write some scripts to do it for you!',
@@ -11,3 +11,12 @@ return {
     minAspectRatio = 0.8,  -- 4:5 portrait, Instagram's narrowest supported ratio
     maxAspectRatio = 1.91, -- widest supported landscape ratio
 }
+
+local ok, localConfig = pcall(require, 'ConfigLocal')
+if ok and type(localConfig) == 'table' then
+    for key, value in pairs(localConfig) do
+        Config[key] = value
+    end
+end
+
+return Config

@@ -1,6 +1,6 @@
 # Auto Insta Export — Lightroom Classic plugin
 
-Watches your catalog for photos tagged `for_insta`, exports them as
+Watches your catalogue for photos tagged `for_insta`, exports them as
 Instagram-ready JPEGs straight into the Google Drive sync folder used by
 `instagram_autoupload`, writes a caption `.txt` per photo, and tags exported
 photos `auto_exported` so they're never exported twice.
@@ -12,8 +12,11 @@ photos `auto_exported` so they're never exported twice.
   with the `for_insta` keyword that don't already have `auto_exported`.
 - For each match: exports a full-quality JPEG, crops/resizes it to fit
   Instagram's supported aspect ratio range (4:5 to 1.91:1) at up to
-  1080×1350px, writes a same-named caption `.txt`, and tags the photo
-  `auto_exported` in the catalog (both keywords are kept permanently).
+  1080×1350px, saves it as `<capture date>/NNN-<original name>.jpg` in the
+  export folder (so same-day photos post as one carousel; `undated/` if
+  there's no capture date), writes a same-named
+  caption `.txt`, and tags the photo
+  `auto_exported` in the catalogue (both keywords are kept permanently).
 - You can also trigger a pass manually any time via
   **Library → Plug-in Extras → Auto Insta Export: Run Now**.
 - There's no "drive connected" trigger — you open Lightroom to tag photos
@@ -42,7 +45,7 @@ view its debug log more conveniently.
 
 ### 3. Configure the export folder / keywords
 
-Edit `AutoInstaExport.lrplugin/Config.lua` if any of these differ for you:
+Defaults live in `AutoInstaExport.lrplugin/Config.lua`. Override any of these in a gitignored `ConfigLocal.lua` (copy `ConfigLocal.example.lua`); `exportFolder` must be set there:
 
 | Setting | Default |
 | --- | --- |
@@ -53,7 +56,7 @@ Edit `AutoInstaExport.lrplugin/Config.lua` if any of these differ for you:
 | `pollIntervalSeconds` | `120` |
 
 Reload the plugin (Plug-in Manager → select it → **Reload Plug-in**) after
-editing `Config.lua`.
+editing `ConfigLocal.lua`.
 
 ### 4. Tag and export photos
 

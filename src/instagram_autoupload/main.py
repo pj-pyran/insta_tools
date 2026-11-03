@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import logging
 import os
 import sys
@@ -22,23 +23,34 @@ def run() -> None:
     access_token = os.environ["IG_ACCESS_TOKEN"]
 
     queue = DriveQueue()
-    image_file, caption_file = queue.get_next_post()
+    post_date = os.environ.get("POST_DATE") or datetime.date.today().isoformat()
+    post = queue.get_post(post_date)
+    if post is None:
+        logger.info("No post folder named %s in the queue; nothing to post", post_date)
+        return
+    image_files, caption_file, folder_id = post
     caption = queue.download_text(caption_file["id"]) if caption_file else ""
     if not caption_file:
-        logger.warning("No caption file found for %s; posting without a caption", image_file["name"])
+        logger.warning("No caption file found for %s; posting without a caption", image_files[0]["name"])
+    logger.info("Posting %d photo(s): %s", len(image_files), [f["name"] for f in image_files])
 
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        local_path = os.path.join(tmp_dir, image_file["name"])
-        queue.download_file(image_file["id"], local_path)
+    assets: list[github_relay.ReleaseAsset] = []
+    try:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            for image_file in image_files:
+                local_path = os.path.join(tmp_dir, image_file["name"])
+                queue.download_file(image_file["id"], local_path)
+                assets.append(github_relay.upload_photo(local_path))
 
-        asset = github_relay.upload_photo(local_path)
-        try:
-            instagram_client.post_photo(ig_user_id, asset.download_url, caption, access_token)
-        finally:
+            instagram_client.post_photos(
+                ig_user_id, [a.download_url for a in assets], caption, access_token
+            )
+    finally:
+        for asset in assets:
             github_relay.delete_release(asset)
 
-    posted_ids = [image_file["id"]] + ([caption_file["id"]] if caption_file else [])
-    queue.move_to_posted(posted_ids)
+    posted_ids = [f["id"] for f in image_files] + ([caption_file["id"]] if caption_file else [])
+    queue.move_to_posted(posted_ids, post_date, folder_id)
 
     new_token = token_refresh.refresh_access_token(access_token)
     token_refresh.rotate_github_secret(new_token)
