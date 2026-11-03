@@ -1,4 +1,4 @@
-"""Publish a single image post via the Instagram API with Instagram Login."""
+"""Publish single-image or carousel posts via the Instagram API with Instagram Login."""
 
 from __future__ import annotations
 
@@ -22,15 +22,26 @@ class InstagramPublishError(RuntimeError):
     pass
 
 
-def create_container(ig_user_id: str, image_url: str, caption: str, access_token: str) -> str:
+def create_container(
+    ig_user_id: str,
+    access_token: str,
+    image_url: str | None = None,
+    caption: str = "",
+    is_carousel_item: bool = False,
+    children: list[str] | None = None,
+) -> str:
+    data = {"access_token": access_token}
+    if children:
+        data["media_type"] = "CAROUSEL"
+        data["children"] = ",".join(children)
+    else:
+        data["image_url"] = image_url
+    if is_carousel_item:
+        data["is_carousel_item"] = "true"
+    else:
+        data["caption"] = caption  # captions are only valid on the top-level container
     resp = requests.post(
-        f"{GRAPH_HOST}/{API_VERSION}/{ig_user_id}/media",
-        data={
-            "image_url": image_url,
-            "caption": caption,
-            "access_token": access_token,
-        },
-        timeout=60,
+        f"{GRAPH_HOST}/{API_VERSION}/{ig_user_id}/media", data=data, timeout=60
     )
     resp.raise_for_status()
     container_id = resp.json()["id"]
@@ -76,7 +87,21 @@ def publish_container(ig_user_id: str, container_id: str, access_token: str) -> 
     return media_id
 
 
-def post_photo(ig_user_id: str, image_url: str, caption: str, access_token: str) -> str:
-    container_id = create_container(ig_user_id, image_url, caption, access_token)
+def post_photos(ig_user_id: str, image_urls: list[str], caption: str, access_token: str) -> str:
+    """Publish one photo, or a carousel when given several."""
+    if len(image_urls) == 1:
+        container_id = create_container(
+            ig_user_id, access_token, image_url=image_urls[0], caption=caption
+        )
+    else:
+        child_ids = [
+            create_container(ig_user_id, access_token, image_url=url, is_carousel_item=True)
+            for url in image_urls
+        ]
+        for child_id in child_ids:
+            wait_until_ready(child_id, access_token)
+        container_id = create_container(
+            ig_user_id, access_token, caption=caption, children=child_ids
+        )
     wait_until_ready(container_id, access_token)
     return publish_container(ig_user_id, container_id, access_token)

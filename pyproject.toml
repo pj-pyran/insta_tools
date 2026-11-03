@@ -13,6 +13,7 @@ dependencies = [
     "google-auth-oauthlib",
     "requests",
     "PyNaCl",
+    "Pillow",
 ]
 
 [tool.setuptools.packages.find]

@@ -23,7 +23,7 @@ local ok, loadErr = pcall(function()
 
     LrTasks.startAsyncTask(function()
         logger:info('AutoInstaExport background polling started')
-        LrTasks.sleep(10) -- let catalog finish opening before the first pass
+        LrTasks.sleep(10) -- let catalogue finish opening before the first pass
         while true do
             if prefs.autoExportEnabled then
                 local passOk, err = LrTasks.pcall(ExportTask.runExportPass)

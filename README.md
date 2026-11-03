@@ -7,19 +7,65 @@ account, running on a GitHub Actions schedule.
 
 Each run (`src/instagram_autoupload/main.py`):
 
-1. Picks the next photo from a Google Drive folder (default: oldest first —
-   see `selection.py` to change the strategy).
-2. Downloads the photo and its matching `<name>.txt` caption file (optional).
-3. Temporarily uploads the photo as a GitHub Release asset to get a public
-   URL (required by the Instagram API, which fetches the image itself).
-4. Creates an Instagram media container, polls until ready, and publishes it.
+1. Looks in the Google Drive queue for a subfolder named after today's date
+   (or `POST_DATE`, `YYYY-MM-DD`) and posts its photos together as one
+   carousel (max 10). No such folder means nothing is posted.
+   See "Queue layout" below.
+2. Downloads the photos and the matching `<name>.txt` caption file (optional;
+   the first photo in the post that has one is used).
+3. Temporarily uploads the photos as GitHub Release assets to get public
+   URLs (required by the Instagram API, which fetches the images itself).
+4. Creates Instagram media container(s) (a carousel if several photos), polls
+   until ready, and publishes.
 5. Deletes the temporary release/asset.
-6. Moves the posted photo (and caption) into a `posted/` subfolder in Drive.
+6. Moves the posted photos (and caption) into `posted/<date>/` in Drive.
 7. Refreshes the Instagram long-lived access token and rewrites the
    `IG_ACCESS_TOKEN` GitHub secret so it never expires between runs.
 
-If the Drive queue is empty, or any step fails, the run exits non-zero and
+If any step fails, the run exits non-zero and
 shows up as a failed GitHub Actions run — no other notification is sent.
+
+### Queue layout
+
+Both Lightroom exporters (cloud and Classic) put each photo in a subfolder of
+the queue named by its planned post date, `YYYY-MM-DD/NNN-<original file name>.jpg`:
+
+- Folder name = planned post date (defaults to the capture date, so everything
+  shot on one day is one carousel). The upload job picks the folder by name.
+- `NNN` – order of the photo within the post; the original file name is kept
+  so you can match photos to the catalog.
+- Photos with no capture date go in `undated/`, which is never posted until
+  you rename it to a date.
+
+To reschedule, rename the folder in Drive; to split or merge posts, move
+photos (and their same-named `.txt` captions) between folders.
+
+### Lightroom cloud export (optional, feeds the same queue)
+
+A separate daily workflow (`src/instagram_autoupload/lightroom_cloud_main.py`,
+`.github/workflows/lightroom_cloud_export.yml`) pulls photos from Lightroom's
+cloud catalog (not Lightroom Classic) into the same Drive queue:
+
+1. Tag photos for export by adding them to a Lightroom cloud album named
+   **"for Instagram auto-export"** (create it once in the Lightroom mobile/web/
+   desktop cloud app — the API has no per-photo keyword/tag field, so an
+   album is the closest equivalent to the Classic plugin's `for_insta` keyword).
+2. The script lists that album, skips anything already present in a second
+   **"Instagram auto-exported"** album (the dedup mechanism, since the API
+   can't remove a single asset from an album membership check), generates a
+   JPEG export per new asset, crops/resizes it to Instagram's spec
+   (`image_processing.py`, same constraints as the Classic plugin), and
+   uploads the photo + a default caption `.txt` into the Drive queue folder.
+3. Exported assets are added to "Instagram auto-exported" so they're never
+   re-exported.
+4. Adobe rotates the refresh token on every use, so the script writes the new
+   one back to the `ADOBE_REFRESH_TOKEN` GitHub secret each run (same pattern
+   as the Instagram token rotation).
+
+**Caveat:** Adobe's standard OAuth app does not get a token that survives
+indefinitely without additional Adobe approval for some capabilities (see
+their docs) — if authentication ever starts failing, re-run the one-time
+setup below to get a fresh refresh token.
 
 ## One-time setup
 
@@ -79,7 +125,39 @@ The workflow rewrites `IG_ACCESS_TOKEN` each run, which the default
 with **Secrets: Read and write** permission, and save it as the
 `GH_PAT_SECRETS` repo secret.
 
-### 5. Repo secrets summary
+### 5. Adobe Developer Console (Lightroom cloud export, optional)
+
+1. Log into [console.adobe.io](https://console.adobe.io/), create a project,
+   add the **Lightroom APIs** API.
+2. Choose an **OAuth Web App** credential, set a default redirect URI (e.g.
+   `https://localhost/`), note the **Client ID** and **Client Secret**.
+3. On the credential's Scopes tab, ensure `openid`, `offline_access`,
+   `lr_partner_apis`, and `lr_partner_rendition_apis` are selected.
+4. Visit this URL, log in with the Adobe account tied to your Lightroom
+   cloud catalog, and approve access:
+
+   ```
+   https://ims-na1.adobelogin.com/ims/authorize/v2
+     ?client_id=<CLIENT_ID>
+     &redirect_uri=<REDIRECT_URI>
+     &scope=openid,offline_access,lr_partner_apis,lr_partner_rendition_apis
+     &response_type=code
+   ```
+
+5. Copy the `code` query param from the URL you land on, then run promptly
+   (codes are single-use and expire quickly):
+
+   ```
+   python scripts/get_adobe_refresh_token.py <client_id> <client_secret> <redirect_uri> <code>
+   ```
+
+   This prints `ADOBE_REFRESH_TOKEN` — add it, `ADOBE_CLIENT_ID`, and
+   `ADOBE_CLIENT_SECRET` as GitHub repo secrets.
+6. In the Lightroom cloud app (mobile/web/desktop), create an album named
+   **"for Instagram auto-export"** and add photos to it when you want them
+   picked up.
+
+### 6. Repo secrets summary
 
 | Secret | Description |
 | --- | --- |
@@ -88,7 +166,9 @@ with **Secrets: Read and write** permission, and save it as the
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Drive OAuth client |
 | `GOOGLE_REFRESH_TOKEN` | Drive OAuth refresh token |
 | `GDRIVE_FOLDER_ID` | Drive folder holding the photo queue |
-| `GH_PAT_SECRETS` | PAT used only to rotate `IG_ACCESS_TOKEN` |
+| `GH_PAT_SECRETS` | PAT used to rotate `IG_ACCESS_TOKEN` and `ADOBE_REFRESH_TOKEN` |
+| `ADOBE_CLIENT_ID` / `ADOBE_CLIENT_SECRET` | Adobe OAuth Web App credential |
+| `ADOBE_REFRESH_TOKEN` | Adobe refresh token (auto-rotated; optional, only for cloud export) |
 
 `GITHUB_TOKEN` is provided automatically by Actions (used for the temporary
 release upload).
