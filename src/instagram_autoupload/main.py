@@ -18,7 +18,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def run() -> None:
+def run() -> bool:
+    """Return True if a post was published."""
     ig_user_id = os.environ["IG_USER_ID"]
     access_token = os.environ["IG_ACCESS_TOKEN"]
 
@@ -27,7 +28,7 @@ def run() -> None:
     post = queue.get_post(post_date)
     if post is None:
         logger.info("No post folder named %s in the queue; nothing to post", post_date)
-        return
+        return False
     image_files, caption_file, folder_id = post
     caption = queue.download_text(caption_file["id"]) if caption_file else ""
     if not caption_file:
@@ -56,11 +57,16 @@ def run() -> None:
     token_refresh.rotate_github_secret(new_token)
 
     logger.info("Weekly Instagram post completed successfully")
+    return True
 
 
 def main() -> int:
     try:
-        run()
+        posted = run()
+        output = os.environ.get("GITHUB_OUTPUT")
+        if output:
+            with open(output, "a") as f:
+                f.write(f"posted={'true' if posted else 'false'}\n")
     except Exception:
         logger.exception("Weekly Instagram post failed")
         return 1
